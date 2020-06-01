@@ -45,6 +45,92 @@ ChatBot::~ChatBot()
 //// STUDENT CODE
 ////
 
+// copy constructor using deep copy policy
+ChatBot::ChatBot(const ChatBot& source)
+{
+    std::cout << "ChatBot Copy Constructor" << std::endl;
+
+    // data handles (not owned)
+    _currentNode = source._currentNode;
+    _rootNode = source._rootNode;
+    SetChatLogicHandle(source._chatLogic);
+
+    // data handles (owned)
+    _image = new wxBitmap(*source._image);
+}
+
+// copy assignment operator
+ChatBot& ChatBot::operator=(const ChatBot& source)
+{
+    std::cout << "ChatBot Copy Assignment Operator" << std::endl;
+
+    if (this == &source)    // protection against self-assignment
+        return *this;
+    delete _image;          // deallocate, the object has lived before
+    
+    // data handles (not owned)
+    _currentNode = source._currentNode;
+    _rootNode = source._rootNode;
+    SetChatLogicHandle(source._chatLogic);
+
+    // data handles (owned)
+    _image = new wxBitmap(*source._image);
+
+    return *this;
+}
+
+// move constructor
+ChatBot::ChatBot(ChatBot&& source)
+{
+    std::cout << "ChatBot Move Constructor" << std::endl;
+
+    // data handles (not owned)
+    _currentNode = source._currentNode;
+    _rootNode = source._rootNode;
+    SetChatLogicHandle(source._chatLogic);
+
+    // data handles (owned)
+    _image = source._image;
+
+    // invalidate source
+    source._currentNode = nullptr;
+    source._rootNode = nullptr;
+    source._chatLogic = nullptr;
+    source._image = nullptr;
+}
+
+// move assignment operator
+ChatBot& ChatBot::operator=(ChatBot&& source)
+{
+    std::cout << "ChatBot Move Assignment Operator" << std::endl;
+
+    if (this == &source)    // protection against self-assignment
+        return *this;
+    delete _image;          // deallocate, the object has lived before
+
+    // data handles (not owned)
+    _currentNode = source._currentNode;
+    _rootNode = source._rootNode;
+    SetChatLogicHandle(source._chatLogic);
+
+    // data handles (owned)
+    _image = source._image;
+
+    // invalidate source
+    source._currentNode = nullptr;
+    source._rootNode = nullptr;
+    source._chatLogic = nullptr;
+    source._image = nullptr;
+
+    return *this;
+}
+
+void ChatBot::SetChatLogicHandle(ChatLogic* chatLogic)
+{
+    _chatLogic = chatLogic;
+    _chatLogic->SetChatbotHandle(this);
+}
+
 ////
 //// EOF STUDENT CODE
 
