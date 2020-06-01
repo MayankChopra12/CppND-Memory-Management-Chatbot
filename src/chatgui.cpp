@@ -1,217 +1,272 @@
-#include <wx/filename.h>
-#include <wx/colour.h>
-#include <wx/image.h>
-#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include <iterator>
+#include <tuple>
+#include <algorithm>
+
+#include "graphedge.h"
+#include "graphnode.h"
 #include "chatbot.h"
 #include "chatlogic.h"
-#include "chatgui.h"
 
-// size of chatbot window
-const int width = 414;
-const int height = 736;
 
-// wxWidgets APP
-IMPLEMENT_APP(ChatBotApp);
-
-std::string dataPath = "../";
-std::string imgBasePath = dataPath + "images/";
-
-bool ChatBotApp::OnInit()
+ChatLogic::ChatLogic()
 {
-    // create window with name and show it
-    ChatBotFrame *chatBotFrame = new ChatBotFrame(wxT("Udacity ChatBot"));
-    chatBotFrame->Show(true);
+    //// STUDENT CODE
+    ////
 
-    return true;
+    // create instance of chatbot
+    //_chatBot = new ChatBot("../images/chatbot.png");
+
+    // add pointer to chatlogic so that chatbot answers can be passed on to the GUI
+    //_chatBot->SetChatLogicHandle(this);
+
+    ////
+    //// EOF STUDENT CODE
 }
 
-// wxWidgets FRAME
-ChatBotFrame::ChatBotFrame(const wxString &title) : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(width, height))
+ChatLogic::~ChatLogic()
 {
-    // create panel with background image
-    ChatBotFrameImagePanel *ctrlPanel = new ChatBotFrameImagePanel(this);
+    //// STUDENT CODE
+    ////
 
-    // create controls and assign them to control panel
-    _panelDialog = new ChatBotPanelDialog(ctrlPanel, wxID_ANY);
+    // delete chatbot instance
+    //delete _chatBot;
 
-    // create text control for user input
-    int idTextXtrl = 1;
-    _userTextCtrl = new wxTextCtrl(ctrlPanel, idTextXtrl, "", wxDefaultPosition, wxSize(width, 50), wxTE_PROCESS_ENTER, wxDefaultValidator, wxTextCtrlNameStr);
-    Connect(idTextXtrl, wxEVT_TEXT_ENTER, wxCommandEventHandler(ChatBotFrame::OnEnter));
+    // delete all nodes
+/*    for (auto it = std::begin(_nodes); it != std::end(_nodes); ++it)
+    {
+        delete *it;
+    }*/
 
-    // create vertical sizer for panel alignment and add panels
-    wxBoxSizer *vertBoxSizer = new wxBoxSizer(wxVERTICAL);
-    vertBoxSizer->AddSpacer(90);
-    vertBoxSizer->Add(_panelDialog, 6, wxEXPAND | wxALL, 0);
-    vertBoxSizer->Add(_userTextCtrl, 1, wxEXPAND | wxALL, 5);
-    ctrlPanel->SetSizer(vertBoxSizer);
+    // delete all edges
+ /*   for (auto it = std::begin(_edges); it != std::end(_edges); ++it)
+    {
+        delete *it;
+    }*/
 
-    // position window in screen center
-    this->Centre();
+    ////
+    //// EOF STUDENT CODE
 }
 
-void ChatBotFrame::OnEnter(wxCommandEvent &WXUNUSED(event))
+template <typename T>
+void ChatLogic::AddAllTokensToElement(std::string tokenID, tokenlist &tokens, T &element)
 {
-    // retrieve text from text control
-    wxString userText = _userTextCtrl->GetLineText(0);
-
-    // add new user text to dialog
-    _panelDialog->AddDialogItem(userText, true);
-
-    // delete text in text control
-    _userTextCtrl->Clear();
-
-    // send user text to chatbot 
-     _panelDialog->GetChatLogicHandle()->SendMessageToChatbot(std::string(userText.mb_str()));
+    // find all occurences for current node
+    auto token = tokens.begin();
+    while (true)
+    {
+        token = std::find_if(token, tokens.end(), [&tokenID](const std::pair<std::string, std::string> &pair) { return pair.first == tokenID;; });
+        if (token != tokens.end())
+        {
+            element.AddToken(token->second); // add new keyword to edge
+            token++;                         // increment iterator to next element
+        }
+        else
+        {
+            break; // quit infinite while-loop
+        }
+    }
 }
 
-BEGIN_EVENT_TABLE(ChatBotFrameImagePanel, wxPanel)
-EVT_PAINT(ChatBotFrameImagePanel::paintEvent) // catch paint events
-END_EVENT_TABLE()
-
-ChatBotFrameImagePanel::ChatBotFrameImagePanel(wxFrame *parent) : wxPanel(parent)
+void ChatLogic::LoadAnswerGraphFromFile(std::string filename)
 {
-}
+    // load file with answer graph elements
+    std::ifstream file(filename);
 
-void ChatBotFrameImagePanel::paintEvent(wxPaintEvent &evt)
-{
-    wxPaintDC dc(this);
-    render(dc);
-}
+    // check for file availability and process it line by line
+    if (file)
+    {
+        // loop over all lines in the file
+        std::string lineStr;
+        while (getline(file, lineStr))
+        {
+            // extract all tokens from current line
+            tokenlist tokens;
+            while (lineStr.size() > 0)
+            {
+                // extract next token
+                int posTokenFront = lineStr.find("<");
+                int posTokenBack = lineStr.find(">");
+                if (posTokenFront < 0 || posTokenBack < 0)
+                    break; // quit loop if no complete token has been found
+                std::string tokenStr = lineStr.substr(posTokenFront + 1, posTokenBack - 1);
 
-void ChatBotFrameImagePanel::paintNow()
-{
-    wxClientDC dc(this);
-    render(dc);
-}
+                // extract token type and info
+                int posTokenInfo = tokenStr.find(":");
+                if (posTokenInfo != std::string::npos)
+                {
+                    std::string tokenType = tokenStr.substr(0, posTokenInfo);
+                    std::string tokenInfo = tokenStr.substr(posTokenInfo + 1, tokenStr.size() - 1);
 
-void ChatBotFrameImagePanel::render(wxDC &dc)
-{
-    // load backgroud image from file
-    wxString imgFile = imgBasePath + "sf_bridge.jpg";
-    wxImage image;
-    image.LoadFile(imgFile);
+                    // add token to vector
+                    tokens.push_back(std::make_pair(tokenType, tokenInfo));
+                }
 
-    // rescale image to fit window dimensions
-    wxSize sz = this->GetSize();
-    wxImage imgSmall = image.Rescale(sz.GetWidth(), sz.GetHeight(), wxIMAGE_QUALITY_HIGH);
-    _image = wxBitmap(imgSmall);
+                // remove token from current line
+                lineStr = lineStr.substr(posTokenBack + 1, lineStr.size());
+            }
+
+            // process tokens for current line
+            auto type = std::find_if(tokens.begin(), tokens.end(), [](const std::pair<std::string, std::string> &pair) { return pair.first == "TYPE"; });
+            if (type != tokens.end())
+            {
+                // check for id
+                auto idToken = std::find_if(tokens.begin(), tokens.end(), [](const std::pair<std::string, std::string> &pair) { return pair.first == "ID"; });
+                if (idToken != tokens.end())
+                {
+                    // extract id from token
+                    int id = std::stoi(idToken->second);
+
+                    // node-based processing
+                    if (type->second == "NODE")
+                    {
+                        //// STUDENT CODE
+                        ////
+
+                        // check if node with this ID exists already
+                        //auto newNode = std::find_if(_nodes.begin(), _nodes.end(), [&id](GraphNode *node) { return node->GetID() == id; });
+                        auto newNode = std::find_if(_nodes.begin(), _nodes.end(), [&id](std::unique_ptr<GraphNode> const& node) { return node.get()->GetID() == id; });
+
+                        // create new element if ID does not yet exist
+                        if (newNode == _nodes.end())
+                        {
+                            //_nodes.emplace_back(new GraphNode(id));
+                            _nodes.emplace_back(std::make_unique<GraphNode>(id));
+                            newNode = _nodes.end() - 1; // get iterator to last element
+
+                            // add all answers to current node
+                            AddAllTokensToElement("ANSWER", tokens, **newNode);
+                        }
+
+                        ////
+                        //// EOF STUDENT CODE
+                    }
+
+                    // edge-based processing
+                    if (type->second == "EDGE")
+                    {
+                        //// STUDENT CODE
+                        ////
+
+                        // find tokens for incoming (parent) and outgoing (child) node
+                        auto parentToken = std::find_if(tokens.begin(), tokens.end(), [](const std::pair<std::string, std::string> &pair) { return pair.first == "PARENT"; });
+                        auto childToken = std::find_if(tokens.begin(), tokens.end(), [](const std::pair<std::string, std::string> &pair) { return pair.first == "CHILD"; });
+
+                        if (parentToken != tokens.end() && childToken != tokens.end())
+                        {
+                            // get iterator on incoming and outgoing node via ID search
+                            //auto parentNode = std::find_if(_nodes.begin(), _nodes.end(), [&parentToken](GraphNode *node) { return node->GetID() == std::stoi(parentToken->second); });
+                            //auto childNode = std::find_if(_nodes.begin(), _nodes.end(), [&childToken](GraphNode *node) { return node->GetID() == std::stoi(childToken->second); });
+                            auto parentNode = std::find_if(_nodes.begin(), _nodes.end(), 
+                                [&parentToken](std::unique_ptr<GraphNode> const& node) { return node.get()->GetID() == std::stoi(parentToken->second); });
+                            auto childNode = std::find_if(_nodes.begin(), _nodes.end(), 
+                                [&childToken](std::unique_ptr<GraphNode> const& node) { return node.get()->GetID() == std::stoi(childToken->second); });
+
+                            // create new edge
+                            //GraphEdge *edge = new GraphEdge(id);
+                            //edge->SetChildNode(*childNode);
+                            //edge->SetParentNode(*parentNode);
+                            std::unique_ptr<GraphEdge> edge = std::make_unique<GraphEdge>(id);
+                            edge->SetChildNode(childNode->get());
+                            edge->SetParentNode(parentNode->get());
+                            //_edges.push_back(edge);
+
+                            // find all keywords for current node
+                            //AddAllTokensToElement("KEYWORD", tokens, *edge);
+                            AddAllTokensToElement("KEYWORD", tokens, *edge);
+
+                            // store reference in child node and give ownership to parent node
+                            (*childNode)->AddEdgeToParentNode(edge.get());
+                            //(*parentNode)->AddEdgeToChildNode(edge.get());
+                            (*parentNode)->MoveEdgeToChildNode(std::move(edge));
+                        }
+
+                        ////
+                        //// EOF STUDENT CODE
+                    }
+                }
+                else
+                {
+                    std::cout << "Error: ID missing. Line is ignored!" << std::endl;
+                }
+            }
+        } // eof loop over all lines in the file
+
+        file.close();
+
+    } // eof check for file availability
+    else
+    {
+        std::cout << "File could not be opened!" << std::endl;
+        return;
+    }
+
+    //// STUDENT CODE
+    ////
+
+    // identify root node
+    GraphNode *rootNode = nullptr;
+    for (auto it = std::begin(_nodes); it != std::end(_nodes); ++it)
+    {
+        // search for nodes which have no incoming edges
+        if ((*it)->GetNumberOfParents() == 0)
+        {
+
+            if (rootNode == nullptr)
+            {
+                //rootNode = *it; // assign current node to root
+                rootNode = (*it).get(); // assign current node to root
+            }
+            else
+            {
+                std::cout << "ERROR : Multiple root nodes detected" << std::endl;
+            }
+        }
+    }
+
+    // create a local ChatBot instance on the stack
+    ChatBot chatBot("../images/chatbot.png");
+
+    // use _chatBot as a communication handle between GUI and ChatBot instance
+    SetChatbotHandle(&chatBot);
+
+    // add pointer to chatlogic so that chatbot answers can be passed on to the GUI
+    _chatBot->SetChatLogicHandle(this);
+
+    // add chatbot to graph root node
+    _chatBot->SetRootNode(rootNode);
+    //rootNode->MoveChatbotHere(_chatBot);
+    // use move semantics to pass the ChatBot instance into the root node
+    rootNode->MoveChatbotHere(std::move(chatBot));
     
-    dc.DrawBitmap(_image, 0, 0, false);
-}
-
-BEGIN_EVENT_TABLE(ChatBotPanelDialog, wxPanel)
-EVT_PAINT(ChatBotPanelDialog::paintEvent) // catch paint events
-END_EVENT_TABLE()
-
-ChatBotPanelDialog::ChatBotPanelDialog(wxWindow *parent, wxWindowID id)
-    : wxScrolledWindow(parent, id)
-{
-    // sizer will take care of determining the needed scroll size
-    _dialogSizer = new wxBoxSizer(wxVERTICAL);
-    this->SetSizer(_dialogSizer);
-
-    // allow for PNG images to be handled
-    wxInitAllImageHandlers();
-
-    //// STUDENT CODE
-    ////
-
-    // create chat logic instance
-    //_chatLogic = new ChatLogic(); 
-    _chatLogic = std::make_unique<ChatLogic>();
-
-    // pass pointer to chatbot dialog so answers can be displayed in GUI
-    _chatLogic->SetPanelDialogHandle(this);
-
-    // load answer graph from file
-    _chatLogic->LoadAnswerGraphFromFile(dataPath + "src/answergraph.txt");
-
     ////
     //// EOF STUDENT CODE
 }
 
-ChatBotPanelDialog::~ChatBotPanelDialog()
+void ChatLogic::SetPanelDialogHandle(ChatBotPanelDialog *panelDialog)
 {
-    //// STUDENT CODE
-    ////
-
-    //delete _chatLogic;
-
-    ////
-    //// EOF STUDENT CODE
+    _panelDialog = panelDialog;
 }
 
-void ChatBotPanelDialog::AddDialogItem(wxString text, bool isFromUser)
+void ChatLogic::SetChatbotHandle(ChatBot *chatbot)
 {
-    // add a single dialog element to the sizer
-    ChatBotPanelDialogItem *item = new ChatBotPanelDialogItem(this, text, isFromUser);
-    _dialogSizer->Add(item, 0, wxALL | (isFromUser == true ? wxALIGN_LEFT : wxALIGN_RIGHT), 8);
-    _dialogSizer->Layout();
-
-    // make scrollbar show up
-    this->FitInside(); // ask the sizer about the needed size
-    this->SetScrollRate(5, 5);
-    this->Layout();
-
-    // scroll to bottom to show newest element
-    int dx, dy;
-    this->GetScrollPixelsPerUnit(&dx, &dy);
-    int sy = dy * this->GetScrollLines(wxVERTICAL);
-    this->DoScroll(0, sy);
+    _chatBot = chatbot;
 }
 
-void ChatBotPanelDialog::PrintChatbotResponse(std::string response)
+void ChatLogic::SendMessageToChatbot(std::string message)
 {
-    // convert string into wxString and add dialog element
-    wxString botText(response.c_str(), wxConvUTF8);
-    AddDialogItem(botText, false);
+    _chatBot->ReceiveMessageFromUser(message);
 }
 
-void ChatBotPanelDialog::paintEvent(wxPaintEvent &evt)
+void ChatLogic::SendMessageToUser(std::string message)
 {
-    wxPaintDC dc(this);
-    render(dc);
+    _panelDialog->PrintChatbotResponse(message);
 }
 
-void ChatBotPanelDialog::paintNow()
+wxBitmap *ChatLogic::GetImageFromChatbot()
 {
-    wxClientDC dc(this);
-    render(dc);
-}
-
-void ChatBotPanelDialog::render(wxDC &dc)
-{
-    wxImage image;
-    image.LoadFile(imgBasePath + "sf_bridge_inner.jpg");
-
-    wxSize sz = this->GetSize();
-    wxImage imgSmall = image.Rescale(sz.GetWidth(), sz.GetHeight(), wxIMAGE_QUALITY_HIGH);
-
-    _image = wxBitmap(imgSmall);
-    dc.DrawBitmap(_image, 0, 0, false);
-}
-
-ChatBotPanelDialogItem::ChatBotPanelDialogItem(wxPanel *parent, wxString text, bool isFromUser)
-    : wxPanel(parent, -1, wxPoint(-1, -1), wxSize(-1, -1), wxBORDER_NONE)
-{
-    // retrieve image from chatbot
-    wxBitmap *bitmap = isFromUser == true ? nullptr : ((ChatBotPanelDialog*)parent)->GetChatLogicHandle()->GetImageFromChatbot(); 
-
-    // create image and text
-    _chatBotImg = new wxStaticBitmap(this, wxID_ANY, (isFromUser ? wxBitmap(imgBasePath + "user.png", wxBITMAP_TYPE_PNG) : *bitmap), wxPoint(-1, -1), wxSize(-1, -1));
-    _chatBotTxt = new wxStaticText(this, wxID_ANY, text, wxPoint(-1, -1), wxSize(150, -1), wxALIGN_CENTRE | wxBORDER_NONE);
-    _chatBotTxt->SetForegroundColour(isFromUser == true ? wxColor(*wxBLACK) : wxColor(*wxWHITE));
-
-    // create sizer and add elements
-    wxBoxSizer *horzBoxSizer = new wxBoxSizer(wxHORIZONTAL);
-    horzBoxSizer->Add(_chatBotTxt, 8, wxEXPAND | wxALL, 1);
-    horzBoxSizer->Add(_chatBotImg, 2, wxEXPAND | wxALL, 1);
-    this->SetSizer(horzBoxSizer);
-
-    // wrap text after 150 pixels
-    _chatBotTxt->Wrap(150);
-
-    // set background color
-    this->SetBackgroundColour((isFromUser == true ? wxT("YELLOW") : wxT("BLUE")));
+    return _chatBot->GetImageHandle();
 }
